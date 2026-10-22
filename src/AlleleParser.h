@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <cmath>
+#include <memory>
 #include <fastahack/split.h>
 #include <list> // XXX workaround for a missing include in vcflib's join.h
 #include <vcflib/join.h>
@@ -128,7 +129,9 @@ public:
     Parameters parameters; // holds operational parameters passed at program invocation
 
     AlleleParser(int argc, char** argv);
+    AlleleParser(const Parameters& params);
     ~AlleleParser(void);
+    void initialize(void);
 
     vector<string> sampleList; // list of sample names, indexed by sample id
     vector<string> sampleListFromBam; // sample names drawn from BAM file
@@ -282,7 +285,7 @@ public:
                                map<string, vector<Allele*> >& alleleGroups,
                                // provides observation group counts, counts of partial observations
                                map<string, vector<Allele*> >& partialObservationGroups,
-                               map<Allele*, set<Allele*> >& partialObservationSupport,
+                               PartialSupportMap& partialObservationSupport,
                                int allowedAlleleTypes);
     void getAlleles(Samples& allelesBySample,
                     int allowedAlleleTypes,
@@ -315,10 +318,16 @@ public:
     long int currentPosition;  // 0-based current position
     int lastHaplotypeLength;
     char currentReferenceBase;
-    string currentSequence;
+    // All parsers keep the immutable backing string alive without copying it.
+    const string& currentSequence() const {
+        if (currentSequenceShared) return *currentSequenceShared;
+        static const string empty;
+        return empty;
+    }
+    shared_ptr<const string> currentSequenceShared; // see loadReferenceSequence()
     char currentReferenceBaseChar();
     string currentReferenceBaseString();
-    string::iterator currentReferenceBaseIterator();
+    string::const_iterator currentReferenceBaseIterator();
     string currentReferenceHaplotype();
 
     // output files

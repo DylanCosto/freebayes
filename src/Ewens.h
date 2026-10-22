@@ -13,13 +13,16 @@ long double alleleFrequencyProbability(const map<int, int>& alleleFrequencyCount
 long double alleleFrequencyProbabilityln(const map<int, int>& alleleFrequencyCounts, long double theta);
 long double impl_alleleFrequencyProbabilityln(const map<int, int>& alleleFrequencyCounts, long double theta);
 
-class AlleleFrequencyProbabilityCache : public map<map<int, int>, long double> {
+// Keyed by theta as well as the counts, so that a cached value is never used
+// for a different theta
+class AlleleFrequencyProbabilityCache : public map<long double, map<map<int, int>, long double> > {
 public:
     long double alleleFrequencyProbabilityln(const map<int, int>& counts, long double theta) {
-        map<map<int, int>, long double>::iterator p = find(counts);
-        if (p == end()) {
+        map<map<int, int>, long double>& t = (*this)[theta];
+        map<map<int, int>, long double>::iterator p = t.find(counts);
+        if (p == t.end()) {
             long double pln = impl_alleleFrequencyProbabilityln(counts, theta);
-            insert(make_pair(counts, pln));
+            t.insert(make_pair(counts, pln));
             return pln;
         } else {
             return p->second;

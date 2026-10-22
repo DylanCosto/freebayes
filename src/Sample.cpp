@@ -355,7 +355,7 @@ ostream& operator<<(ostream& out, Sample& sample) {
 void Samples::assignPartialSupport(vector<Allele>& alleles,
                                    vector<Allele*>& partialObservations,
                                    map<string, vector<Allele*> >& partialObservationGroups,
-                                   map<Allele*, set<Allele*> >& partialObservationSupport,
+                                   PartialSupportMap& partialObservationSupport,
                                    unsigned long haplotypeStart,
                                    int haplotypeLength) {
 
@@ -410,7 +410,7 @@ void Samples::assignPartialSupport(vector<Allele>& alleles,
             continue;
         }
         Sample& sample = siter->second;
-        map<Allele*, set<Allele*> >::iterator sup = partialObservationSupport.find(*p);
+        PartialSupportMap::iterator sup = partialObservationSupport.find(*p);
         if (sup != partialObservationSupport.end()) {
             set<Allele*>& supported = sup->second;
             for (set<Allele*>::iterator s = supported.begin(); s != supported.end(); ++s) {
@@ -430,7 +430,7 @@ bool Sample::observationSupports(Allele* obs, Allele* allele) {
     if (obs->currentBase == allele->currentBase) {
         return true;
     } else {
-        map<Allele*, set<Allele*> >::iterator p = reversePartials.find(obs);
+        PartialSupportMap::iterator p = reversePartials.find(obs);
         if (p != reversePartials.end()) {
             set<Allele*>& supports = p->second;
             if (supports.find(allele) != supports.end()) {

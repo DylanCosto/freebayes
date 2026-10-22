@@ -77,7 +77,7 @@ probObservedAllelesGivenGenotype(
                 long double qual = (1.0 - exp(obs.lnquality)) * (1.0 - exp(obs.lnmapQuality));
                 
                 if (onPartials) {
-                    map<Allele*, set<Allele*> >::iterator r = sample.reversePartials.find(*a);
+                    PartialSupportMap::iterator r = sample.reversePartials.find(*a);
                     if (r != sample.reversePartials.end()) {
                         if (sample.reversePartials[*a].empty()) {
                             cerr << "partial " << *a << " has empty reverse" << endl;

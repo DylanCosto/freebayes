@@ -1,4 +1,5 @@
 #include "AlleleParser.h"
+#include <mutex>
 #include <vcflib/multichoose.h> // includes generic functions, so it must be included here
                                 // otherwise we will get a linker error
                                 // see: http://stackoverflow.com/questions/36039/templates-spread-across-multiple-files
@@ -670,23 +671,33 @@ void AlleleParser::loadReferenceSequence(BAMALIGN& alignment) {
   currentPosition = alignment.POSITION;
 }
 
+// The reference sequences loaded by the parsers, shared while they are in use
+// (with --threads, the parsers of the chunks of a sequence load it once)
+static mutex referenceSequencesLock;
+static map<string, weak_ptr<const string> > referenceSequencesInUse;
+
 void AlleleParser::loadReferenceSequence(string& seqname) {
     if (currentSequenceName != seqname) {
         currentSequenceName = seqname;
         currentSequenceStart = 0;
         currentRefID = bamMultiReader.GETREFID(currentSequenceName);
-        currentSequence = uppercase(reference.getRawSequence(currentSequenceName));
-        // check the first few characters and verify they are not garbage
-        string validBases = "ACGTURYKMSWBDHVN-";
-        size_t found = currentSequence.substr(0, 100).find_first_not_of(validBases);
-        if (found != string::npos) {
-            ERROR("Found non-DNA character " << currentSequence.at(found)
-                  << " at position " << found << " in " << seqname << endl
-                  << "Is your reference compressed or corrupted? "
-                  << "freebayes requires an uncompressed reference sequence.");
-            exit(1);
+        lock_guard<mutex> lock(referenceSequencesLock);
+        currentSequenceShared = referenceSequencesInUse[seqname].lock();
+        if (!currentSequenceShared) {
+            // check the first few characters and verify they are not garbage
+            string start = uppercase(reference.getRawSubSequence(currentSequenceName, 0, 100));
+            string validBases = "ACGTURYKMSWBDHVN-";
+            size_t found = start.find_first_not_of(validBases);
+            if (found != string::npos) {
+                ERROR("Found non-DNA character " << start.at(found)
+                      << " at position " << found << " in " << seqname << endl
+                      << "Is your reference compressed or corrupted? "
+                      << "freebayes requires an uncompressed reference sequence.");
+                exit(1);
+            }
+            currentSequenceShared = make_shared<const string>(reference.getSequence(currentSequenceName));
+            referenceSequencesInUse[seqname] = currentSequenceShared;
         }
-        currentSequence = reference.getSequence(currentSequenceName);
     }
 }
 
@@ -881,6 +892,17 @@ bool AlleleParser::inTarget(void) {
 // sets up environment so we can start registering alleles
 AlleleParser::AlleleParser(int argc, char** argv) : parameters(Parameters(argc,argv))
 {
+    initialize();
+}
+
+// Used by the worker threads of --threads, which process regions given here
+AlleleParser::AlleleParser(const Parameters& params) : parameters(params)
+{
+    initialize();
+}
+
+void AlleleParser::initialize(void)
+{
 
     oneSampleAnalysis = false;
     currentRefID = 0; // will get set properly via toNextRefID
@@ -952,15 +974,15 @@ char AlleleParser::currentReferenceBaseChar(void) {
 }
 
 string AlleleParser::currentReferenceBaseString(void) {
-    return currentSequence.substr(floor(currentPosition) - currentSequenceStart, 1);
+    return currentSequence().substr(floor(currentPosition) - currentSequenceStart, 1);
 }
 
-string::iterator AlleleParser::currentReferenceBaseIterator(void) {
-    return currentSequence.begin() + (floor(currentPosition) - currentSequenceStart);
+string::const_iterator AlleleParser::currentReferenceBaseIterator(void) {
+    return currentSequence().begin() + (floor(currentPosition) - currentSequenceStart);
 }
 
 string AlleleParser::currentReferenceHaplotype(void) {
-    return currentSequence.substr(floor(currentPosition) - currentSequenceStart, lastHaplotypeLength);
+    return currentSequence().substr(floor(currentPosition) - currentSequenceStart, lastHaplotypeLength);
 }
 
 string AlleleParser::referenceSubstr(long int pos, unsigned int len) {
@@ -970,12 +992,12 @@ string AlleleParser::referenceSubstr(long int pos, unsigned int len) {
 bool AlleleParser::isCpG(string& altbase) {
     // bounds check
     if (floor(currentPosition) - currentSequenceStart - 1 < 0
-            || floor(currentPosition) - currentSequenceStart + 1 >= currentSequence.size()) {
+            || floor(currentPosition) - currentSequenceStart + 1 >= currentSequence().size()) {
         return false;
     }
-    string prevb = currentSequence.substr(floor(currentPosition) - currentSequenceStart - 1, 1);
-    string currb = currentSequence.substr(floor(currentPosition) - currentSequenceStart, 1);
-    string nextb = currentSequence.substr(floor(currentPosition) - currentSequenceStart + 1, 1);
+    string prevb = currentSequence().substr(floor(currentPosition) - currentSequenceStart - 1, 1);
+    string currb = currentSequence().substr(floor(currentPosition) - currentSequenceStart, 1);
+    string nextb = currentSequence().substr(floor(currentPosition) - currentSequenceStart + 1, 1);
     // 5'-3' CpG <-> TpG is represented as CpG <-> CpA in on the opposite strand
     if ((nextb == "G" && ((currb == "C" && altbase == "T") || (currb == "T" && altbase == "C")))
         ||
@@ -1201,7 +1223,7 @@ Allele AlleleParser::makeAllele(RegisteredAlignment& ra,
 
     string refSequence;
     if (type != ALLELE_NULL) { // only used for non null allele, avoid soft clipping edge cases
-        refSequence = currentSequence.substr(pos - currentSequenceStart, reflen);
+        refSequence = currentSequence().substr(pos - currentSequenceStart, reflen);
     }
 
     long int repeatRightBoundary = pos;
@@ -1230,7 +1252,7 @@ Allele AlleleParser::makeAllele(RegisteredAlignment& ra,
         // by adjusting the cigar, we implicitly adjust
         // allele.referenceLength, which is calculated when the allele is made
         qualstr = string(length, qualityInt2Char(0));
-        readSequence = currentSequence.substr(pos - currentSequenceStart, length);
+        readSequence = currentSequence().substr(pos - currentSequenceStart, length);
     }
 
     // cache information about repeat structure in the alleles, to
@@ -1245,7 +1267,7 @@ Allele AlleleParser::makeAllele(RegisteredAlignment& ra,
         }
         map<long int, map<string, int> >::iterator rc = cachedRepeatCounts.find(pos);
         if (rc == cachedRepeatCounts.end()) {
-            cachedRepeatCounts[pos] = repeatCounts(pos - currentSequenceStart, currentSequence, 12);
+            cachedRepeatCounts[pos] = repeatCounts(pos - currentSequenceStart, currentSequence(), 12);
             rc = cachedRepeatCounts.find(pos);
         }
         map<string, int>& matchedRepeatCounts = rc->second;
@@ -1258,13 +1280,13 @@ Allele AlleleParser::makeAllele(RegisteredAlignment& ra,
                 // determine the boundaries of the repeat
                 long int p = pos - currentSequenceStart;
                 // adjust to ensure we hit the first of the repeatstr
-                size_t startpos = currentSequence.find(repeatstr, max((long int) 0, p - (long int) repeatstr.size() - 1));
+                size_t startpos = currentSequence().find(repeatstr, max((long int) 0, p - (long int) repeatstr.size() - 1));
                 long int leftbound = startpos + currentSequenceStart;
                 if (startpos == string::npos) {
                     cerr << "could not find repeat sequence?" << endl;
                     cerr << "repeat sequence: " << repeatstr << endl;
                     cerr << "currentsequence start: " << currentSequenceStart << endl;
-                    cerr << currentSequence << endl;
+                    cerr << currentSequence() << endl;
                     cerr << "matched repeats:" << endl;
                     for (map<string, int>::iterator q = matchedRepeatCounts.begin(); q != matchedRepeatCounts.end(); ++q) {
                         cerr << q->first  << " : " << q->second << endl;
@@ -1281,17 +1303,17 @@ Allele AlleleParser::makeAllele(RegisteredAlignment& ra,
         double minEntropy = parameters.minRepeatEntropy;
         while (minEntropy > 0 && // ignore if turned off
                // don't run off the end of the current sequence
-               repeatRightBoundary - currentSequenceStart < currentSequence.size() &&
+               repeatRightBoundary - currentSequenceStart < currentSequence().size() &&
                // there is no point in going past the alignment end
                // because we won't make a haplotype call unless we have a covering observation from a read
                repeatRightBoundary < alignment_end_pos &&
-               entropy(currentSequence.substr(start, repeatRightBoundary - pos)) < minEntropy) {
+               entropy(currentSequence().substr(start, repeatRightBoundary - pos)) < minEntropy) {
             ++repeatRightBoundary;
         }
 
         // edge case, the indel is an insertion and matches the reference to the right
         // this means there is a repeat structure in the read, but not the ref
-        if (currentSequence.substr(pos - currentSequenceStart, length) == readSequence) {
+        if (currentSequence().substr(pos - currentSequenceStart, length) == readSequence) {
             repeatRightBoundary = max(repeatRightBoundary, pos + length + 1);
         }
     }
@@ -1378,7 +1400,7 @@ RegisteredAlignment& AlleleParser::registerAlignment(BAMALIGN& alignment, Regist
         DEBUG2("read:          " << rDna);
         DEBUG2("aligned bases: " << alignment.QUERYBASES);
         DEBUG2("qualities:     " << alignment.QUALITIES);
-        DEBUG2("reference seq: " << currentSequence.substr(csp, alignment.ALIGNEDBASES));
+        DEBUG2("reference seq: " << currentSequence().substr(csp, alignment.ALIGNEDBASES));
     }
 #endif
 
@@ -1440,7 +1462,7 @@ RegisteredAlignment& AlleleParser::registerAlignment(BAMALIGN& alignment, Regist
                          << alignment.QNAME << endl
                          << currentSequenceName << ":" << (long unsigned int) currentPosition + 1 << endl
 		      //<< alignment.AlignedBases << endl
-                         << currentSequence.substr(csp, alignment.ALIGNEDBASES) << endl;
+                         << currentSequence().substr(csp, alignment.ALIGNEDBASES) << endl;
 		    cerr << " RP " << rp << " " << rDna  <<" len " << rDna.length() <<  std::endl;
                     abort();
                 }
@@ -1451,7 +1473,7 @@ RegisteredAlignment& AlleleParser::registerAlignment(BAMALIGN& alignment, Regist
                 // get reference allele
                 string sb;
                 try {
-                    sb = currentSequence.at(csp);
+                    sb = currentSequence().at(csp);
                 } catch (const std::out_of_range& outOfRange) {
                     cerr << "Exception: Alignment reports a match past the end of the current reference sequence." << endl
                          << "This suggests alignment corruption or a mismatch between this reference and the alignments." << endl
@@ -1602,7 +1624,7 @@ RegisteredAlignment& AlleleParser::registerAlignment(BAMALIGN& alignment, Regist
                 // or, if we are not in a mismatch, construct the last reference allele of the match
             } else if (firstMatch < csp) {
                 int length = csp - firstMatch;
-                //string matchingSequence = currentSequence.substr(csp - length, length);
+                //string matchingSequence = currentSequence().substr(csp - length, length);
                 string readSequence = rDna.substr(rp - length, length);
                 string qualstr = rQual.substr(rp - length, length);
                 if (allATGC(readSequence)) {
@@ -1673,7 +1695,7 @@ RegisteredAlignment& AlleleParser::registerAlignment(BAMALIGN& alignment, Regist
                 qual /= harmonicSum(l);
             }
 
-            string refseq = currentSequence.substr(csp, l);
+            string refseq = currentSequence().substr(csp, l);
             // some aligners like to report deletions at the beginnings and ends of reads.
             // without any sequence in the read to support this, it is hard to believe
             // that these deletions are real, so we ignore them here.
@@ -1958,7 +1980,7 @@ void AlleleParser::updateAlignmentQueue(long int position,
     DEBUG2("updating alignment queue");
     DEBUG2("currentPosition = " << position
            << "; currentSequenceStart = " << currentSequenceStart
-           << "; currentSequence end = " << currentSequence.size() + currentSequenceStart);
+           << "; currentSequence end = " << currentSequence().size() + currentSequenceStart);
 
     // make sure we have sequence for the *first* alignment
     //extendReferenceSequence(currentAlignment);
@@ -1970,7 +1992,7 @@ void AlleleParser::updateAlignmentQueue(long int position,
            << ", currentAlignment.AlignedBases.size() == " << currentAlignment.ALIGNEDBASES
            << ", currentPosition == " << position
            << ", currentSequenceStart == " << currentSequenceStart
-           << " .. + currentSequence.size() == " << currentSequenceStart + currentSequence.size()
+           << " .. + currentSequence().size() == " << currentSequenceStart + currentSequence().size()
         );
 
     uint64_t currentAlignment_end_position = 0;
@@ -2055,7 +2077,7 @@ void AlleleParser::updateAlignmentQueue(long int position,
                 if (parameters.leftAlignIndels) {
                     int length = currentAlignment_end_position - currentAlignment.POSITION + 1;
                     stablyLeftAlign(currentAlignment,
-                                    currentSequence.substr(currentSequencePosition(currentAlignment), length));
+                                    currentSequence().substr(currentSequencePosition(currentAlignment), length));
                 }
                 // get sample name
                 string sampleName = readGroupToSampleNames[readGroup];
@@ -2160,6 +2182,18 @@ void AlleleParser::removeRegisteredAlignmentsOverlappingPosition(long unsigned i
             f->second = updated;
         }
     }
+}
+
+// Removes duplicate pointers, keeping the order of the alleles. (Sorting the
+// pointers would order the alleles by address, which differs between runs,
+// and the order determines e.g. which allele represents a group in the output.)
+static void uniqueAllelePointers(vector<Allele*>& alleles) {
+    set<Allele*> seen;
+    vector<Allele*>::iterator out = alleles.begin();
+    for (vector<Allele*>::iterator a = alleles.begin(); a != alleles.end(); ++a) {
+        if (seen.insert(*a).second) *out++ = *a;
+    }
+    alleles.erase(out, alleles.end());
 }
 
 void AlleleParser::addToRegisteredAlleles(vector<Allele*>& alleles) {
@@ -2867,7 +2901,7 @@ bool AlleleParser::toNextPosition(void) {
             } else if (registeredAlignments.empty()) {
                 DEBUG("no more alignments in input");
                 return false;
-            } else if (currentPosition >= currentSequence.size() + currentSequenceStart) {
+            } else if (currentPosition >= currentSequence().size() + currentSequenceStart) {
                 DEBUG("no more alignments in input");
                 DEBUG("at end of sequence");
                 return false;
@@ -3217,7 +3251,7 @@ void AlleleParser::buildHaplotypeAlleles(
     map<string, vector<Allele*> >& alleleGroups,
     // provides observation group counts, counts of partial observations
     map<string, vector<Allele*> >& partialObservationGroups,
-    map<Allele*, set<Allele*> >& partialObservationSupport,
+    PartialSupportMap& partialObservationSupport,
     int allowedAlleleTypes) {
 
     int haplotypeLength = 1;
@@ -3410,8 +3444,7 @@ void AlleleParser::buildHaplotypeAlleles(
         // if so, homogenize them, and then re-sort the alleles
 
         // ensure uniqueness of registered alleles
-        sort(registeredAlleles.begin(), registeredAlleles.end());
-        registeredAlleles.erase(unique(registeredAlleles.begin(), registeredAlleles.end()), registeredAlleles.end());
+        uniqueAllelePointers(registeredAlleles);
 
         removeDuplicateAlleles(samples, alleleGroups, allowedAlleleTypes, haplotypeLength, refAllele);
 
@@ -3492,7 +3525,7 @@ void AlleleParser::buildHaplotypeAlleles(
 
             // now regenerate partial observation groups using updated partial support
             partialObservationGroups.clear();
-            for (map<Allele*, set<Allele*> >::iterator p = partialObservationSupport.begin();
+            for (PartialSupportMap::iterator p = partialObservationSupport.begin();
                  p != partialObservationSupport.end(); ++p) {
                 set<Allele*>& supported = p->second;
                 for (set<Allele*>::iterator s = supported.begin(); s != supported.end(); ++s) {
@@ -3506,8 +3539,7 @@ void AlleleParser::buildHaplotypeAlleles(
             addToRegisteredAlleles(haplotypeObservations);
 
             // clean up potential duplicates
-            sort(registeredAlleles.begin(), registeredAlleles.end());
-            registeredAlleles.erase(unique(registeredAlleles.begin(), registeredAlleles.end()), registeredAlleles.end());
+            uniqueAllelePointers(registeredAlleles);
 
             samples.clearFullObservations();
             getAlleles(samples, allowedAlleleTypes, haplotypeLength, false, true);
@@ -4045,13 +4077,13 @@ vector<Allele> AlleleParser::genotypeAlleles(
                         long int extend_right = currentPosition + haplotypeLength
                                 - allele.position - allele.referenceLength;
                         if (extend_left > 0) {
-                            altseq += currentSequence.substr(currentPosition - currentSequenceStart, extend_left);
+                            altseq += currentSequence().substr(currentPosition - currentSequenceStart, extend_left);
                             cigar += convert(extend_left) + "M";
                         }
                         altseq += allele.alternateSequence;
                         cigar += allele.cigar;
                         if (extend_right > 0) {
-                            altseq += currentSequence.substr(
+                            altseq += currentSequence().substr(
                                 allele.position + allele.referenceLength - currentSequenceStart, extend_right);
                             cigar += convert(extend_right) + "M";
                         }
@@ -4084,7 +4116,7 @@ int AlleleParser::homopolymerRunLeft(string altbase) {
     int position = currentPosition - 1;
     int sequenceposition = position - currentSequenceStart;
     int runlength = 0;
-    while (sequenceposition >= 0 && currentSequence.substr(sequenceposition, 1) == altbase) {
+    while (sequenceposition >= 0 && currentSequence().substr(sequenceposition, 1) == altbase) {
         ++runlength;
         --position;
         sequenceposition = position - currentSequenceStart;
@@ -4098,7 +4130,7 @@ int AlleleParser::homopolymerRunRight(string altbase) {
     int position = currentPosition + 1;
     int sequenceposition = position - currentSequenceStart;
     int runlength = 0;
-    while (sequenceposition >= 0 && currentSequence.substr(sequenceposition, 1) == altbase) {
+    while (sequenceposition >= 0 && currentSequence().substr(sequenceposition, 1) == altbase) {
         ++runlength;
         ++position;
         sequenceposition = position - currentSequenceStart;

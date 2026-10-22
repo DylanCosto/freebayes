@@ -8,6 +8,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <set>
 #include <limits>
 #include <sstream>
 #include <assert.h>
@@ -331,6 +332,16 @@ public:
 
 
 void updateAllelesCachedData(vector<Allele*>& alleles);
+
+// Orders observations by the read they come from rather than by address,
+// which differs between runs, as the order in which the partial observations
+// are visited affects the results
+struct AlleleObservationLess {
+    bool operator()(const Allele* a, const Allele* b) const;
+};
+
+// partial observations and the alleles which they support
+typedef map<Allele*, set<Allele*>, AlleleObservationLess> PartialSupportMap;
 
 map<string, vector<Allele*> > groupAllelesBySample(list<Allele*>& alleles);
 void groupAllelesBySample(list<Allele*>& alleles, map<string, vector<Allele*> >& groups);

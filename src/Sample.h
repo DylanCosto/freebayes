@@ -48,7 +48,7 @@ public:
     map<string, vector<Allele*> > partialSupport;
 
     // for fast scaling of qualities for partial supports
-    map<Allele*, set<Allele*> > reversePartials;
+    PartialSupportMap reversePartials;
 
     // clear the above
     void clearPartialObservations(void);
@@ -99,7 +99,7 @@ public:
     void assignPartialSupport(vector<Allele>& alleles,
                               vector<Allele*>& partialObservations,
                               map<string, vector<Allele*> >& partialObservationGroups,
-                              map<Allele*, set<Allele*> >& partialObservationSupport,
+                              PartialSupportMap& partialObservationSupport,
                               unsigned long haplotypeStart,
                               int haplotypeLength);
 

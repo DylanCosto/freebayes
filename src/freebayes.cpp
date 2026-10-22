@@ -305,8 +305,14 @@ int main (int argc, char *argv[]) {
         // re-calculate coverage, as this could change now that we've built haplotype alleles
         coverage = countAlleles(samples);
 
-        // estimate theta using the haplotype length
-        long double theta = parameters.TH * parser->lastHaplotypeLength;
+        // Theta for the Ewens prior. This was scaled by the haplotype length,
+        // but the prior was memoized by allele frequency counts alone, so the
+        // value computed for the first site with given counts was used for
+        // all the later ones, which in practice is the value for TH (sites of
+        // length 1 come first). This gives the same results independently of
+        // the order in which sites are processed, e.g. when the targets are
+        // processed in parts.
+        long double theta = parameters.TH;
 
         // if we have only one viable allele, we don't have evidence for variation at this site
         if (!parser->hasInputVariantAllelesAtCurrentPosition() && !parameters.reportMonomorphic && genotypeAlleles.size() <= 1 && genotypeAlleles.front().isReference()) {

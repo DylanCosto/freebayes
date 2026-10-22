@@ -210,7 +210,7 @@ long double binomialCoefficientLn(int k, int n) {
     return factorialln(n) - (factorialln(k) + factorialln(n - k));
 }
 
-BinomialCache binomialCache;
+thread_local BinomialCache binomialCache; // memoization, per thread (see --threads)
 
 long double binomialProbln(int k, int n, long double p) {
     return binomialCache.binomialProbln(k, n, p);
@@ -296,7 +296,7 @@ long double factorial(
     }
 }
 
-FactorialCache factorialCache;
+thread_local FactorialCache factorialCache; // memoization, per thread (see --threads)
 
 /*
 long double factorialln(int n) {

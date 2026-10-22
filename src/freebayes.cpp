@@ -17,6 +17,10 @@
 #include <time.h>
 #include <float.h>
 #include <stdlib.h>
+#include <sstream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 // private libraries
 #ifdef HAVE_BAMTOOLS
@@ -45,28 +49,22 @@
 
 using namespace std;
 
-// todo
-// generalize the main function to take the parameters as input
-// so that we can invoke the entire algorithm on different regions
-// when requested to run in parallel
-// take the targets (or whole genome) and make small jobs
-// run the main function for each region in an omp parallel for loop
-// only do this if the --parallel flag is set > 1
+// With --threads, each worker records the positions it evaluates and the
+// records it would output, see runParallel()
+struct CallLog {
+    vector<long> positions;
+    vector<pair<long, string> > records;
+};
 
-// freebayes main
-int main (int argc, char *argv[]) {
+// Call variants over the targets of the parser, writing the records to out,
+// or to log if given
+static int runCaller(AlleleParser* parser, ostream& out, CallLog* log) {
 
-    // install segfault handler
-    signal(SIGSEGV, segfaultHandler);
-
-    AlleleParser* parser = new AlleleParser(argc, argv);
     Parameters& parameters = parser->parameters;
     list<Allele*> alleles;
 
     Samples samples;
     NonCalls nonCalls;
-
-    ostream& out = *(parser->output);
 
     Bias observationBias;
     if (!parameters.alleleObservationBiasFile.empty()) {
@@ -100,11 +98,6 @@ int main (int argc, char *argv[]) {
         allowedAlleleTypes |= ALLELE_COMPLEX;
     }
 
-    // output VCF header
-    if (parameters.output == "vcf") {
-        out << parser->variantCallFile.header << endl;
-    }
-
     if (0 < parameters.limitCoverage) {
         srand(13);
     }
@@ -117,6 +110,7 @@ int main (int argc, char *argv[]) {
     while (parser->getNextAlleles(samples, allowedAlleleTypes)) {
 
         ++total_sites;
+        if (log) log->positions.push_back((long) parser->currentPosition);
 
         DEBUG2("at start of main loop");
 
@@ -659,7 +653,8 @@ int main (int argc, char *argv[]) {
 
             vcflib::Variant var(parser->variantCallFile);
 
-            out << results.vcf(
+            ostringstream record;
+            record << results.vcf(
                 var,
                 pHom,
                 bestComboOddsRatio,
@@ -678,6 +673,8 @@ int main (int argc, char *argv[]) {
                 parser->sequencingTechnologies,
                 parser)
                 << endl;
+            if (log) log->records.push_back(make_pair((long) parser->currentPosition, record.str()));
+            else out << record.str();
 
         } else if (parameters.gVCFout) {
             // record statistics for gVCF output
@@ -700,8 +697,35 @@ int main (int argc, char *argv[]) {
           << "processed sites: " << processed_sites << endl
           << "ratio: " << (float) processed_sites / (float) total_sites);
 
+    return 0;
+
+}
+
+#include "freebayes_parallel.h"
+
+// freebayes main
+int main (int argc, char *argv[]) {
+
+    // install segfault handler
+    signal(SIGSEGV, segfaultHandler);
+
+    AlleleParser* parser = new AlleleParser(argc, argv);
+    Parameters& parameters = parser->parameters;
+    ostream& out = *(parser->output);
+
+    // output VCF header
+    if (parameters.output == "vcf") {
+        out << parser->variantCallFile.header << endl;
+    }
+
+    int ret;
+    if (canRunParallel(parser))
+        ret = runParallel(parser, out);
+    else
+        ret = runCaller(parser, out, NULL);
+
     delete parser;
 
-    return 0;
+    return ret;
 
 }

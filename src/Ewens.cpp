@@ -21,7 +21,8 @@ long double alleleFrequencyProbability(const map<int, int>& alleleFrequencyCount
 
 }
 
-AlleleFrequencyProbabilityCache alleleFrequencyProbabilityCache;
+// thread_local: memoization caches, written while calling (see --threads)
+thread_local AlleleFrequencyProbabilityCache alleleFrequencyProbabilityCache;
 
 long double alleleFrequencyProbabilityln(const map<int, int>& alleleFrequencyCounts, long double theta) {
     return alleleFrequencyProbabilityCache.alleleFrequencyProbabilityln(alleleFrequencyCounts, theta);

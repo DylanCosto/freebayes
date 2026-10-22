@@ -293,6 +293,10 @@ void Parameters::usage(char** argv) {
         << "                   to use the allele in analysis.  default: 1" << endl
         << "   --min-coverage N" << endl
         << "                   Require at least this coverage to process a site. default: 0" << endl
+        << "   --threads N" << endl
+        << "                   Use N threads. The regions are processed in parallel and the" << endl
+        << "                   output is the same as with one thread. Requires indexed BAM" << endl
+        << "                   input. default: 1" << endl
         << "   --limit-coverage N" << endl
         << "                   Downsample per-sample coverage to this level if greater than this coverage." << endl
         << "                   default: no limit" << endl
@@ -487,6 +491,7 @@ Parameters::Parameters(int argc, char** argv) {
     //minAltQSumTotal = 0;
     minCoverage = 0;
     limitCoverage = 0;
+    threads = 1;
     skipCoverage = 0;
     trimComplexTail = 0;
     debuglevel = 0;
@@ -562,6 +567,7 @@ Parameters::Parameters(int argc, char** argv) {
             {"min-alternate-qsum", required_argument, 0, '3'},
             {"min-coverage", required_argument, 0, '!'},
             {"limit-coverage", required_argument, 0, '+'},
+            {"threads", required_argument, 0, 1001},
             {"skip-coverage", required_argument, 0, 'g'},
             {"trim-complex-tail", no_argument, 0, ']'},
             {"genotype-qualities", no_argument, 0, '='},
@@ -707,6 +713,13 @@ Parameters::Parameters(int argc, char** argv) {
             break;
 
             // -+ --limit-coverage
+        case 1001:
+            if (!convert(optarg, threads) || threads < 1) {
+                cerr << "could not parse threads" << endl;
+                exit(1);
+            }
+            break;
+
         case '+':
             if (!convert(optarg, limitCoverage)) {
                 cerr << "could not parse limit-coverage" << endl;

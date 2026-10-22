@@ -122,6 +122,7 @@ public:
     int minAltTotal;             // -G --min-alternate-total
     int minCoverage;             // -! --min-coverage
     int limitCoverage;           // -+ --limit-coverage
+    int threads;                 // --threads
     int skipCoverage;            // -g --skip-coverage
     int trimComplexTail;         // -. --trim-complex-tail
     int debuglevel;              // -d --debug increments

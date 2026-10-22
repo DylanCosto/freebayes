@@ -128,7 +128,9 @@ public:
     Parameters parameters; // holds operational parameters passed at program invocation
 
     AlleleParser(int argc, char** argv);
+    AlleleParser(const Parameters& params);
     ~AlleleParser(void);
+    void initialize(void);
 
     vector<string> sampleList; // list of sample names, indexed by sample id
     vector<string> sampleListFromBam; // sample names drawn from BAM file

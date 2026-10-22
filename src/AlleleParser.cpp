@@ -881,6 +881,17 @@ bool AlleleParser::inTarget(void) {
 // sets up environment so we can start registering alleles
 AlleleParser::AlleleParser(int argc, char** argv) : parameters(Parameters(argc,argv))
 {
+    initialize();
+}
+
+// Used by the worker threads of --threads, which process regions given here
+AlleleParser::AlleleParser(const Parameters& params) : parameters(params)
+{
+    initialize();
+}
+
+void AlleleParser::initialize(void)
+{
 
     oneSampleAnalysis = false;
     currentRefID = 0; // will get set properly via toNextRefID

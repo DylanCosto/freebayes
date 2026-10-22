@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <cmath>
+#include <memory>
 #include <fastahack/split.h>
 #include <list> // XXX workaround for a missing include in vcflib's join.h
 #include <vcflib/join.h>
@@ -318,6 +319,7 @@ public:
     int lastHaplotypeLength;
     char currentReferenceBase;
     string currentSequence;
+    shared_ptr<const string> currentSequenceShared; // see loadReferenceSequence()
     char currentReferenceBaseChar();
     string currentReferenceBaseString();
     string::iterator currentReferenceBaseIterator();

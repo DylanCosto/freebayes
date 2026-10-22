@@ -1,4 +1,5 @@
 #include "AlleleParser.h"
+#include <mutex>
 #include <vcflib/multichoose.h> // includes generic functions, so it must be included here
                                 // otherwise we will get a linker error
                                 // see: http://stackoverflow.com/questions/36039/templates-spread-across-multiple-files
@@ -670,23 +671,34 @@ void AlleleParser::loadReferenceSequence(BAMALIGN& alignment) {
   currentPosition = alignment.POSITION;
 }
 
+// The reference sequences loaded by the parsers, shared while they are in use
+// (with --threads, the parsers of the chunks of a sequence load it once)
+static mutex referenceSequencesLock;
+static map<string, weak_ptr<const string> > referenceSequencesInUse;
+
 void AlleleParser::loadReferenceSequence(string& seqname) {
     if (currentSequenceName != seqname) {
         currentSequenceName = seqname;
         currentSequenceStart = 0;
         currentRefID = bamMultiReader.GETREFID(currentSequenceName);
-        currentSequence = uppercase(reference.getRawSequence(currentSequenceName));
-        // check the first few characters and verify they are not garbage
-        string validBases = "ACGTURYKMSWBDHVN-";
-        size_t found = currentSequence.substr(0, 100).find_first_not_of(validBases);
-        if (found != string::npos) {
-            ERROR("Found non-DNA character " << currentSequence.at(found)
-                  << " at position " << found << " in " << seqname << endl
-                  << "Is your reference compressed or corrupted? "
-                  << "freebayes requires an uncompressed reference sequence.");
-            exit(1);
+        lock_guard<mutex> lock(referenceSequencesLock);
+        currentSequenceShared = referenceSequencesInUse[seqname].lock();
+        if (!currentSequenceShared) {
+            // check the first few characters and verify they are not garbage
+            string start = uppercase(reference.getRawSubSequence(currentSequenceName, 0, 100));
+            string validBases = "ACGTURYKMSWBDHVN-";
+            size_t found = start.find_first_not_of(validBases);
+            if (found != string::npos) {
+                ERROR("Found non-DNA character " << start.at(found)
+                      << " at position " << found << " in " << seqname << endl
+                      << "Is your reference compressed or corrupted? "
+                      << "freebayes requires an uncompressed reference sequence.");
+                exit(1);
+            }
+            currentSequenceShared = make_shared<const string>(reference.getSequence(currentSequenceName));
+            referenceSequencesInUse[seqname] = currentSequenceShared;
         }
-        currentSequence = reference.getSequence(currentSequenceName);
+        currentSequence = *currentSequenceShared;
     }
 }
 

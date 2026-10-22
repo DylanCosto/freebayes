@@ -275,7 +275,7 @@ int main (int argc, char *argv[]) {
         }
 
         map<string, vector<Allele*> > partialObservationGroups;
-        map<Allele*, set<Allele*> > partialObservationSupport;
+        PartialSupportMap partialObservationSupport;
 
         // build haplotype alleles matching the current longest allele (often will do nothing)
         // this will adjust genotypeAlleles if changes are made

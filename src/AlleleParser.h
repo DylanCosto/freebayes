@@ -282,7 +282,7 @@ public:
                                map<string, vector<Allele*> >& alleleGroups,
                                // provides observation group counts, counts of partial observations
                                map<string, vector<Allele*> >& partialObservationGroups,
-                               map<Allele*, set<Allele*> >& partialObservationSupport,
+                               PartialSupportMap& partialObservationSupport,
                                int allowedAlleleTypes);
     void getAlleles(Samples& allelesBySample,
                     int allowedAlleleTypes,

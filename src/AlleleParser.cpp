@@ -2162,6 +2162,18 @@ void AlleleParser::removeRegisteredAlignmentsOverlappingPosition(long unsigned i
     }
 }
 
+// Removes duplicate pointers, keeping the order of the alleles. (Sorting the
+// pointers would order the alleles by address, which differs between runs,
+// and the order determines e.g. which allele represents a group in the output.)
+static void uniqueAllelePointers(vector<Allele*>& alleles) {
+    set<Allele*> seen;
+    vector<Allele*>::iterator out = alleles.begin();
+    for (vector<Allele*>::iterator a = alleles.begin(); a != alleles.end(); ++a) {
+        if (seen.insert(*a).second) *out++ = *a;
+    }
+    alleles.erase(out, alleles.end());
+}
+
 void AlleleParser::addToRegisteredAlleles(vector<Allele*>& alleles) {
     registeredAlleles.insert(registeredAlleles.end(),
                              alleles.begin(),
@@ -3217,7 +3229,7 @@ void AlleleParser::buildHaplotypeAlleles(
     map<string, vector<Allele*> >& alleleGroups,
     // provides observation group counts, counts of partial observations
     map<string, vector<Allele*> >& partialObservationGroups,
-    map<Allele*, set<Allele*> >& partialObservationSupport,
+    PartialSupportMap& partialObservationSupport,
     int allowedAlleleTypes) {
 
     int haplotypeLength = 1;
@@ -3410,8 +3422,7 @@ void AlleleParser::buildHaplotypeAlleles(
         // if so, homogenize them, and then re-sort the alleles
 
         // ensure uniqueness of registered alleles
-        sort(registeredAlleles.begin(), registeredAlleles.end());
-        registeredAlleles.erase(unique(registeredAlleles.begin(), registeredAlleles.end()), registeredAlleles.end());
+        uniqueAllelePointers(registeredAlleles);
 
         removeDuplicateAlleles(samples, alleleGroups, allowedAlleleTypes, haplotypeLength, refAllele);
 
@@ -3492,7 +3503,7 @@ void AlleleParser::buildHaplotypeAlleles(
 
             // now regenerate partial observation groups using updated partial support
             partialObservationGroups.clear();
-            for (map<Allele*, set<Allele*> >::iterator p = partialObservationSupport.begin();
+            for (PartialSupportMap::iterator p = partialObservationSupport.begin();
                  p != partialObservationSupport.end(); ++p) {
                 set<Allele*>& supported = p->second;
                 for (set<Allele*>::iterator s = supported.begin(); s != supported.end(); ++s) {
@@ -3506,8 +3517,7 @@ void AlleleParser::buildHaplotypeAlleles(
             addToRegisteredAlleles(haplotypeObservations);
 
             // clean up potential duplicates
-            sort(registeredAlleles.begin(), registeredAlleles.end());
-            registeredAlleles.erase(unique(registeredAlleles.begin(), registeredAlleles.end()), registeredAlleles.end());
+            uniqueAllelePointers(registeredAlleles);
 
             samples.clearFullObservations();
             getAlleles(samples, allowedAlleleTypes, haplotypeLength, false, true);

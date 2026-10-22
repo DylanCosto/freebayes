@@ -20,7 +20,7 @@ vcflib::Variant& Results::vcf(
     GenotypeCombo& genotypeCombo,
     map<string, vector<Allele*> >& alleleGroups,
     map<string, vector<Allele*> >& partialObservationGroups,
-    map<Allele*, set<Allele*> >& partialObservationSupport,
+    PartialSupportMap& partialObservationSupport,
     map<int, vector<Genotype> >& genotypesByPloidy,
     vector<string>& sequencingTechnologies,
     AlleleParser* parser) {
@@ -428,7 +428,7 @@ vcflib::Variant& Results::vcf(
         }
     }
 
-    for (map<Allele*, set<Allele*> >::iterator p = partialObservationSupport.begin(); p != partialObservationSupport.end(); ++p) {
+    for (PartialSupportMap::iterator p = partialObservationSupport.begin(); p != partialObservationSupport.end(); ++p) {
         basesInObservations += p->first->alternateSequence.size();
     }
 

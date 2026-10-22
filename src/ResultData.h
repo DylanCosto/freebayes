@@ -56,7 +56,7 @@ public:
         GenotypeCombo& genotypeCombo,
         map<string, vector<Allele*> >& alleleGroups,
         map<string, vector<Allele*> >& partialObservationGroups,
-        map<Allele*, set<Allele*> >& partialSupport,
+        PartialSupportMap& partialSupport,
         map<int, vector<Genotype> >& genotypesByPloidy,
         vector<string>& sequencingTechnologies,
         AlleleParser* parser);

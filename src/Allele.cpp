@@ -130,6 +130,14 @@ const long double Allele::lnsubquality(const Allele& a) const {
     return phred2ln(subquality(a));
 }
 
+bool AlleleObservationLess::operator()(const Allele* a, const Allele* b) const {
+    if (a->alignmentStart != b->alignmentStart) return a->alignmentStart < b->alignmentStart;
+    if (a->alignmentEnd != b->alignmentEnd) return a->alignmentEnd < b->alignmentEnd;
+    int c = a->readID.compare(b->readID);
+    if (c != 0) return c < 0;
+    return a < b;
+}
+
 void updateAllelesCachedData(vector<Allele*>& alleles) {
     for (vector<Allele*>::iterator a = alleles.begin(); a != alleles.end(); ++a) {
         (*a)->update();

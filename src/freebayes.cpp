@@ -567,7 +567,7 @@ static int runCaller(AlleleParser* parser, ostream& out, CallLog* log) {
 
         map<string, int> repeats;
         if (parameters.showReferenceRepeats) {
-            repeats = parser->repeatCounts(parser->currentSequencePosition(), parser->currentSequence, 12);
+            repeats = parser->repeatCounts(parser->currentSequencePosition(), parser->currentSequence(), 12);
         }
 
         vector<Allele> alts;

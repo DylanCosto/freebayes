@@ -318,11 +318,16 @@ public:
     long int currentPosition;  // 0-based current position
     int lastHaplotypeLength;
     char currentReferenceBase;
-    string currentSequence;
+    // All parsers keep the immutable backing string alive without copying it.
+    const string& currentSequence() const {
+        if (currentSequenceShared) return *currentSequenceShared;
+        static const string empty;
+        return empty;
+    }
     shared_ptr<const string> currentSequenceShared; // see loadReferenceSequence()
     char currentReferenceBaseChar();
     string currentReferenceBaseString();
-    string::iterator currentReferenceBaseIterator();
+    string::const_iterator currentReferenceBaseIterator();
     string currentReferenceHaplotype();
 
     // output files

@@ -233,3 +233,5 @@ test('T01', prove, args : ['-e','bash','-v','t/01_call_variants.t'], workdir : t
 test('T01b', prove, args : ['-e','bash','-v','t/01b_call_variants.t'], workdir : testdir )
 test('T02', prove, args : ['-e','bash','-v','t/02_multi_bam.t'], workdir : testdir )
 test('T03', prove, args : ['-e','bash','-v','t/03_reference_bases.t'], workdir: testdir )
+
+test('T04_parallel_targets', prove, args : ['-e', 'bash', '-v', 't/04_parallel_targets.t'], workdir: testdir, env: ['FREEBAYES=' + meson.current_build_dir() / 'freebayes'])

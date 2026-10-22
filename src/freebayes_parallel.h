@@ -288,7 +288,8 @@ static int runParallel(AlleleParser* mainParser, ostream& out) {
             if (r->first >= from && r->first < to) out << r->second;
         }
         chunks[k].log = CallLog();
-        from = to;
+        // The next target starts a new coordinate range.
+        from = sameTarget ? to : LONG_MIN;
     }
 
     for (size_t i = 0; i < workers.size(); ++i) workers[i].join();
